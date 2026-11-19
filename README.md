@@ -23,11 +23,21 @@ Sau lần mở đầu tiên, app tự lưu toàn bộ lõi tính toán và lịc
 
 ## Đưa lên mạng (GitHub Pages)
 
-Thư mục này là một dự án tự chứa. Khi đẩy lên nhánh `main` của một repo GitHub,
-quy trình `.github/workflows/pages.yml` tự triển khai thư mục `public/` lên GitHub Pages
-(trong Settings → Pages của repo, chọn Source: GitHub Actions).
+App đang chạy tại https://thanh262.github.io/astrolog-web/ (repo `Thanh262/astrolog-web`).
+GitHub Pages phục vụ nhánh `gh-pages`, nhánh này chính là nội dung thư mục `public/`.
 
-**Khi sửa bất kỳ file nào trong `public/`**, tăng `VERSION` trong `public/sw.js` để các máy đã cài nhận bản mới.
+Cập nhật bản trên mạng sau khi sửa:
+
+1. Tăng `VERSION` trong `public/sw.js` (để các máy đã cài nhận bản mới).
+2. Commit lên `main`, rồi đẩy cả hai nhánh:
+
+```powershell
+git push origin main
+```
+
+```powershell
+git subtree push --prefix public origin gh-pages
+```
 
 ## Biên dịch lại lõi
 
