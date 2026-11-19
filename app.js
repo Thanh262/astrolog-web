@@ -1,9 +1,12 @@
 import { initEngine, runAstrolog, astrologHtmlToFragment } from './engine.js';
 import {
-  buildChart, ASPECTS, ELEMENTS, MODES, OBJECTS, OBJECT_GROUPS, CORE, DEFAULT_EXTRAS,
+  buildChart, ASPECTS, ELEMENTS, MODES, OBJECTS, SIGNS, OBJECT_GROUPS, CORE, DEFAULT_EXTRAS,
   objectSwitches, splitLon, norm,
 } from './chartdata.js';
 import { renderWheel, attachWheel } from './wheel.js';
+import {
+  METHODS, ORB, snapshot, crossAspects, natalHouses, yearTimeline, progressedMoment, parseIso, isoDate,
+} from './progression.js';
 import { glyph } from './glyphs.js';
 import {
   loadAtlas, searchCities, isValidZone, zoneInfo,
@@ -340,6 +343,8 @@ async function renderTab(tab) {
       tabBody.innerHTML = `<p class="note">${TEXT_TABS.interp.note}</p><div class="term">${v.html}</div>`;
     } else if (tab === 'classic') {
       await renderClassic(seq);
+    } else if (tab === 'progress') {
+      await renderProgress(seq);
     } else {
       const data = await cached(`${shift}|data`, computeData);
       if (seq !== renderSeq || chartAtStart !== current) return;
@@ -513,6 +518,170 @@ function focusHtml(data, key) {
       return `<li><span class="asp-badge ${info.kind}">${glyph(a.type, 14, 'g-asp') || esc(a.type)}<span>${esc(info.vi)}</span></span>
         ${objGlyph(other, 16)}<span>${esc(objName(other))}</span><span class="muted num">${orbText(a.orb)}</span></li>`;
     }).join('')}</ul>` : '<p class="hint">Không có góc chiếu chính.</p>'}`;
+}
+
+// ---------- progressions ----------
+const todayIso = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
+let progDate = todayIso();
+let progMethod = store.get('progMethod', 'secondary');
+let progYear = null;
+let progPinned = null;
+const fmtDate = d => `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+const signedDeg = v => ((v % 360) + 540) % 360 - 180;
+
+function progArgs() {
+  const { args, zone } = baseArgs(view());
+  return { args, zoneArgs: ['-z', astroZone(zone.standard), '-z0', astroDst(zone.dst)] };
+}
+
+async function renderProgress(seq) {
+  const natal = await cached(`${shift}|data`, computeData);
+  const c = view();
+  const target = parseIso(progDate);
+  const birth = parseIso(c.date);
+  if (seq !== renderSeq) return;
+  if (!(target > birth)) {
+    tabBody.innerHTML = progControlsHtml(null) + `<p class="error">Ngày xem tiến trình phải sau ngày sinh (${fmtDate(birth)}).</p>`;
+    bindProgControls();
+    return;
+  }
+  const { args, zoneArgs } = progArgs();
+  const prog = await cached(`${shift}|prog:${progMethod}:${progDate}`, () => snapshot(args, zoneArgs, progMethod, target));
+  if (seq !== renderSeq) return;
+  natalHouses(prog, natal);
+  const cross = crossAspects(progMethod, prog, natal);
+  const moment = progressedMoment(c.date, c.time, target);
+  const sunN = natal.objects.find(o => o.key === 'sun'), sunP = prog.objects.find(o => o.key === 'sun');
+  const arc = sunN && sunP ? signedDeg(sunP.lon - sunN.lon) : null;
+
+  tabBody.innerHTML = `
+    ${progControlsHtml({ moment, arc })}
+    <details class="explain">
+      <summary>Tiến trình (progression) là gì?</summary>
+      <p><b>Thứ cấp:</b> mỗi ngày sau khi sinh ứng với một năm cuộc đời. Muốn xem năm ${Math.floor(moment.age)} tuổi thì lấy bầu trời ${Math.floor(moment.age)} ngày sau ngày sinh. Mặt Trời tiến khoảng 1° mỗi năm, Mặt Trăng 12–14° mỗi năm (khoảng 2,5 năm đổi cung). AC/MC tiến theo cung Mặt Trời.</p>
+      <p><b>Cung Mặt Trời (solar arc):</b> mọi điểm trong lá số cùng tiến một khoảng bằng quãng đường Mặt Trời tiến trình đã đi.</p>
+      <p>Vòng ngoài là vị trí tiến trình, vòng trong là lá số gốc. Đường nối là góc chiếu từ điểm tiến trình tới điểm gốc trong vòng ${ORB}°, người ta xem đó là các mốc phát triển của giai đoạn này.</p>
+    </details>
+    <div class="wheel-layout">
+      <div class="wheel-box" id="progBox">${renderWheel(natal, { title: 'Bánh xe đôi: gốc và tiến trình', outer: prog, cross, outerLabel: ' (tiến trình)' })}</div>
+      <aside class="wheel-side">
+        <div class="focus card-inset" id="progFocus">${progFocusHtml(natal, prog, cross, null)}</div>
+        <div class="legend">
+          <span><i class="ring-dot outer"></i>Vòng ngoài: tiến trình</span>
+          <span><i class="ring-dot"></i>Vòng trong: lá số gốc</span>
+          <span><i class="lg hard"></i>Xung</span><span><i class="lg soft"></i>Hài hòa</span><span><i class="lg neutral"></i>Hợp</span>
+        </div>
+      </aside>
+    </div>
+    <div class="grid-2 prog-tables">
+      <section>
+        <h3>Góc chiếu tiến trình → gốc <span class="muted">(orb ≤ ${ORB}°)</span></h3>
+        ${cross.length ? `<div class="table-wrap"><table class="tbl aspects">
+          <thead><tr><th>Tiến trình</th><th>Góc chiếu</th><th>Gốc</th><th class="num">Orb</th><th></th></tr></thead>
+          <tbody>${cross.map(a => {
+            const info = ASPECTS[a.type];
+            return `<tr>
+              <td class="obj" title="${esc(objName(a.pKey))} tiến trình">${objGlyph(a.pKey)}<span>${esc(objName(a.pKey).replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td><span class="asp-badge ${info.kind}">${glyph(a.type, 16, 'g-asp')}<span>${esc(info.vi)}</span></span></td>
+              <td class="obj" title="${esc(objName(a.b))} gốc">${objGlyph(a.b)}<span>${esc(objName(a.b).replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td class="num">${orbText(a.orb)}</td>
+              <td class="muted">${a.applying ? 'đang tới' : 'đang tách'}</td></tr>`;
+          }).join('')}</tbody></table></div>`
+          : '<p class="hint">Hiện không có góc chiếu tiến trình nào trong vòng 1°.</p>'}
+      </section>
+      <section>
+        <h3>Vị trí tiến trình</h3>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr><th>Thiên thể</th><th>Tiến trình</th><th class="num">Nhà gốc</th><th class="num">Đã tiến</th></tr></thead>
+          <tbody>${prog.objects.map(o => {
+            const n = natal.objects.find(x => x.key === o.key);
+            const moved = n ? signedDeg(o.lon - n.lon) : null;
+            return `<tr>
+              <td class="obj">${objGlyph(o.key)}<span>${esc(o.info.vi.replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td>${signCell(o.pos)}${o.retro ? ' <span class="retro" title="Nghịch hành">℞</span>' : ''}</td>
+              <td class="num">${o.natalHouse ?? '–'}</td>
+              <td class="num">${moved === null ? '' : (moved >= 0 ? '+' : '−') + Math.abs(moved).toFixed(1) + '°'}</td></tr>`;
+          }).join('')}</tbody></table></div>
+      </section>
+    </div>
+    <section class="timeline">
+      <div class="tl-head">
+        <button type="button" class="icon-btn small" id="tlPrev" aria-label="Năm trước">‹</button>
+        <h3 id="tlTitle"></h3>
+        <button type="button" class="icon-btn small" id="tlNext" aria-label="Năm sau">›</button>
+      </div>
+      <div id="progTimeline"><div class="loading"><span class="spinner"></span>Đang tìm các mốc trong năm…</div></div>
+      <p class="hint">Ngày được nội suy từ vị trí tiến trình do Astrolog tính theo từng quý, sai số khoảng vài ngày.</p>
+    </section>`;
+
+  bindProgControls();
+  attachWheel($('progBox'), key => { progPinned = key; $('progFocus').innerHTML = progFocusHtml(natal, prog, cross, key); }, progPinned);
+  loadTimeline(seq, natal);
+}
+
+function progControlsHtml(info) {
+  return `
+    <div class="prog-controls">
+      <label class="field"><span>Tiến trình đến ngày</span><input type="date" id="progDate" value="${progDate}"></label>
+      <button type="button" class="btn small" id="progToday">Hôm nay</button>
+      <label class="field"><span>Phương pháp</span>
+        <select id="progMethod">${Object.entries(METHODS).map(([k, m]) => `<option value="${k}"${k === progMethod ? ' selected' : ''}>${m.vi}</option>`).join('')}</select>
+      </label>
+      ${info ? `<div class="prog-age">
+        <b>Tuổi tiến trình: ${info.moment.age.toFixed(1).replace('.', ',')} năm</b>
+        <span class="muted">${progMethod === 'secondary'
+          ? `Ứng với bầu trời ngày ${fmtDate(info.moment.sky)}`
+          : `Cung tiến: ${info.arc !== null ? info.arc.toFixed(2).replace('.', ',') + '°' : '–'}`}</span>
+      </div>` : ''}
+    </div>`;
+}
+
+function bindProgControls() {
+  $('progDate').addEventListener('change', e => { if (e.target.value) { progDate = e.target.value; progYear = null; renderTab('progress'); } });
+  $('progToday').addEventListener('click', () => { progDate = todayIso(); progYear = null; renderTab('progress'); });
+  $('progMethod').addEventListener('change', e => { progMethod = e.target.value; store.set('progMethod', progMethod); renderTab('progress'); });
+}
+
+function progFocusHtml(natal, prog, cross, key) {
+  if (!key) return '<p class="hint">Chạm vào một điểm ở vòng ngoài (tiến trình) hoặc vòng trong (gốc) để xem các góc chiếu của nó.</p>';
+  const isProg = key.startsWith('p:');
+  const k = key.replace(/^p:/, '');
+  const o = (isProg ? prog : natal).objects.find(x => x.key === k);
+  if (!o) return progFocusHtml(natal, prog, cross, null);
+  const list = cross.filter(a => a.a === key || a.b === key);
+  return `
+    <div class="focus-head">${objGlyph(k, 26)}<div><b>${esc(o.info.vi)} ${isProg ? 'tiến trình' : 'gốc'}</b>
+      <div class="muted">${dm(o.pos)} ${o.pos.sign.vi}${(o.natalHouse ?? o.house) ? ` · Nhà ${o.natalHouse ?? o.house}` : ''}${o.retro ? ' · Nghịch hành' : ''}</div></div></div>
+    ${list.length ? `<ul class="focus-list">${list.map(a => {
+      const otherKey = isProg ? a.b : a.pKey;
+      const info = ASPECTS[a.type];
+      return `<li><span class="asp-badge ${info.kind}">${glyph(a.type, 14, 'g-asp')}<span>${esc(info.vi)}</span></span>
+        ${objGlyph(otherKey, 16)}<span>${esc(objName(otherKey).replace(/\s*\(.*\)$/, ''))} ${isProg ? 'gốc' : 'TT'}</span><span class="muted num">${orbText(a.orb)}</span></li>`;
+    }).join('')}</ul>` : '<p class="hint">Không có góc chiếu tiến trình trong vòng 1°.</p>'}`;
+}
+
+async function loadTimeline(seq, natal) {
+  const year = progYear ?? parseIso(progDate).getUTCFullYear();
+  $('tlTitle').textContent = `Mốc tiến trình năm ${year}`;
+  $('tlPrev').onclick = () => { progYear = year - 1; loadTimeline(renderSeq, natal); };
+  $('tlNext').onclick = () => { progYear = year + 1; loadTimeline(renderSeq, natal); };
+  $('progTimeline').innerHTML = '<div class="loading"><span class="spinner"></span>Đang tìm các mốc trong năm…</div>';
+  const birthYear = +view().date.split('-')[0];
+  if (year <= birthYear) { $('progTimeline').innerHTML = '<p class="hint">Chọn một năm sau năm sinh.</p>'; return; }
+  try {
+    const { args, zoneArgs } = progArgs();
+    const events = await cached(`${shift}|tl:${progMethod}:${year}`, () => yearTimeline(args, zoneArgs, progMethod, natal, year));
+    if (seq !== renderSeq || !$('progTimeline') || (progYear ?? parseIso(progDate).getUTCFullYear()) !== year) return;
+    const now = Date.now();
+    $('progTimeline').innerHTML = events.length ? `<ul class="tl-list">${events.map(e => {
+      const what = e.kind === 'ingress'
+        ? `${objGlyph(e.p, 16)}<span>${esc(objName(e.p).replace(/\s*\(.*\)$/, ''))} tiến trình vào</span>${glyph(SIGNS[e.sign].id, 16, 'g-sign')}<b>${SIGNS[e.sign].vi}</b>`
+        : `${objGlyph(e.p, 16)}<span>${esc(objName(e.p).replace(/\s*\(.*\)$/, ''))} TT</span><span class="asp-badge ${ASPECTS[e.type].kind}">${glyph(e.type, 14, 'g-asp')}<span>${ASPECTS[e.type].vi}</span></span>${objGlyph(e.n, 16)}<span>${esc(objName(e.n).replace(/\s*\(.*\)$/, ''))} gốc</span>`;
+      return `<li class="${e.date.getTime() < now ? 'past' : ''} ${e.kind}"><span class="tl-date">~${fmtDate(e.date)}</span><span class="tl-what">${what}</span></li>`;
+    }).join('')}</ul>` : '<p class="hint">Không có mốc tiến trình chính nào trong năm này.</p>';
+  } catch (err) {
+    if ($('progTimeline')) $('progTimeline').innerHTML = `<p class="error">Lỗi khi tính: ${esc(err.message || err)}</p>`;
+  }
 }
 
 // ---------- wheel + birth-time rectification ----------
