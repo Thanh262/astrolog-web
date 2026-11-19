@@ -780,9 +780,9 @@ $('installBtn').addEventListener('click', async () => {
   const { outcome } = await installEvent.userChoice;
   installEvent = null;
   $('installBtn').hidden = true;
-  if (outcome === 'accepted') toast('Đang cài Astrolog lên máy…');
+  if (outcome === 'accepted') toast('Đang cài astro-com lên máy…');
 });
-window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Đã cài xong. Mở Astrolog từ màn hình chính.'); });
+window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; toast('Đã cài xong. Mở astro-com từ màn hình chính.'); });
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 if (isIOS && !standalone && !store.get('iosHintClosed', false)) $('iosHint').hidden = false;

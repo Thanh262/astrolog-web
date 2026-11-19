@@ -1,6 +1,6 @@
 {
-  "name": "Astrolog Web",
-  "short_name": "Astrolog",
+  "name": "astro-com",
+  "short_name": "astro-com",
   "description": "Lập lá số chiêm tinh bằng lõi Astrolog 7.80 và Swiss Ephemeris, chạy ngay trên máy, dùng được khi không có mạng.",
   "lang": "vi",
   "id": "./",

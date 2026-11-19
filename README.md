@@ -1,4 +1,4 @@
-# Astrolog Web
+# astro-com
 
 Bản web của Astrolog 7.80: lõi C++ gốc (kèm Swiss Ephemeris) được biên dịch sang WebAssembly,
 giao diện mới bằng HTML/JS. Mọi phép tính chạy ngay trong trình duyệt, không gửi dữ liệu đi đâu.
