@@ -85,9 +85,10 @@
           </label>
           <label class="field">
             <span>Múi giờ</span>
-            <input id="tz" type="text" placeholder="Asia/Ho_Chi_Minh" autocomplete="off" spellcheck="false">
+            <select id="tz"></select>
           </label>
         </div>
+        <label class="toggle tz-auto"><input type="checkbox" id="tzAuto" checked> Tự lấy múi giờ theo nơi sinh</label>
         <p class="hint" id="zoneNote">Kinh độ dương là phía Đông. Múi giờ theo chuẩn IANA, tự xét giờ mùa hè.</p>
 
         <details class="more">
@@ -169,6 +170,7 @@
           <button role="tab" data-tab="wheel" aria-selected="true">Bánh xe</button>
           <button role="tab" data-tab="positions" aria-selected="false">Vị trí</button>
           <button role="tab" data-tab="aspects" aria-selected="false">Góc chiếu</button>
+          <button role="tab" data-tab="transit" aria-selected="false">Transit</button>
           <button role="tab" data-tab="progress" aria-selected="false">Tiến trình</button>
           <button role="tab" data-tab="interp" aria-selected="false">Diễn giải</button>
           <button role="tab" data-tab="classic" aria-selected="false">Cổ điển</button>

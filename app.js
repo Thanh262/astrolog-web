@@ -8,8 +8,9 @@ import {
   METHODS, ORB, snapshot, crossAspects, natalHouses, yearTimeline, progressedMoment, parseIso, isoDate,
 } from './progression.js';
 import { glyph } from './glyphs.js';
+import { transitSnapshot, transitAspects, monthTransits, SLOW } from './transit.js';
 import {
-  loadAtlas, searchCities, isValidZone, zoneInfo,
+  loadAtlas, searchCities, isValidZone, zoneInfo, zoneOptions, fixedOffset, wallNow,
   astroZone, astroDst, astroLon, astroLat, formatOffset,
 } from './atlas.js';
 
@@ -58,12 +59,37 @@ initEngine()
   .then(() => { $('engineTag').textContent = 'Lõi Astrolog 7.80 · Swiss Ephemeris'; })
   .catch(err => { $('engineTag').textContent = 'Lỗi nạp lõi: ' + err.message; });
 
+// ---------- time zone picker ----------
+let cityTz = null; // zone of the last chosen city
+(function buildZonePicker() {
+  const o = zoneOptions();
+  const opts = list => list.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join('');
+  f.tz.innerHTML =
+    `<optgroup label="Gợi ý" id="tzSuggested">${opts(o.suggested)}</optgroup>` +
+    `<optgroup label="Giờ lệch cố định (không đổi giờ mùa hè)">${opts(o.fixed)}</optgroup>` +
+    `<optgroup label="Theo khu vực (tự xét giờ mùa hè, giờ lịch sử)">${opts(o.iana)}</optgroup>`;
+})();
+/** Select a zone, adding it to the suggestions if the list doesn't have it yet. */
+function setTz(value) {
+  if (!value) return;
+  if (![...f.tz.options].some(op => op.value === value)) {
+    const fx = fixedOffset(value);
+    const op = new Option(fx !== null ? `${value.replace('-', '−')} cố định` : value.replace(/_/g, ' '), value);
+    $('tzSuggested').prepend(op);
+  }
+  f.tz.value = value;
+}
+f.tz.addEventListener('change', () => { $('tzAuto').checked = false; });
+$('tzAuto').addEventListener('change', e => {
+  if (e.target.checked && cityTz) { setTz(cityTz); updateZoneNote(); }
+});
+
 // ---------- defaults ----------
 (function setDefaults() {
   const now = new Date();
   f.date.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   f.time.value = '12:00';
-  f.lat.value = '21.0245'; f.lon.value = '105.8412'; f.tz.value = 'Asia/Bangkok';
+  f.lat.value = '21.0245'; f.lon.value = '105.8412'; setTz('Asia/Ho_Chi_Minh');
   f.city.value = 'Hanoi, VN';
 })();
 
@@ -93,7 +119,8 @@ function pickCity(c, focusNext = true) {
   f.city.value = `${c.name}, ${c.cc}`;
   f.lat.value = c.lat.toFixed(4);
   f.lon.value = c.lon.toFixed(4);
-  f.tz.value = c.tz;
+  cityTz = c.tz;
+  if ($('tzAuto').checked) setTz(c.tz);
   closeSuggest();
   updateZoneNote();
   if (focusNext) f.city.blur();
@@ -122,14 +149,15 @@ function updateZoneNote() {
   const note = $('zoneNote');
   const tz = f.tz.value.trim();
   if (!tz || !isValidZone(tz) || !f.date.value || !f.time.value) {
-    note.textContent = 'Kinh độ dương là phía Đông. Múi giờ theo chuẩn IANA, tự xét giờ mùa hè.';
+    note.textContent = 'Kinh độ dương là phía Đông.';
     return;
   }
   const [y, m, d] = f.date.value.split('-').map(Number);
   const [hh, mm] = f.time.value.split(':').map(Number);
   const z = zoneInfo(tz, y, m, d, hh, mm);
   note.textContent = `Giờ địa phương lúc sinh: ${formatOffset(z.total)}` +
-    (z.dst ? ` (đang áp dụng giờ mùa hè +${Math.abs(z.dst) / 60}h)` : '') + '.';
+    (z.dst ? ` (đang áp dụng giờ mùa hè +${Math.abs(z.dst) / 60}h)` : '') +
+    (fixedOffset(tz) !== null ? ' (cố định)' : '') + '. Kinh độ dương là phía Đông.';
 }
 [f.tz, f.date, f.time].forEach(el => el.addEventListener('change', updateZoneNote));
 
@@ -152,7 +180,7 @@ function readForm() {
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) return showError('Vĩ độ phải trong khoảng −90 đến 90. Hãy chọn nơi sinh từ danh sách.', f.lat);
   if (!Number.isFinite(lon) || lon < -180 || lon > 180) return showError('Kinh độ phải trong khoảng −180 đến 180.', f.lon);
   const tz = f.tz.value.trim();
-  if (!tz || !isValidZone(tz)) return showError('Múi giờ không hợp lệ. Dùng tên IANA, ví dụ Asia/Ho_Chi_Minh.', f.tz);
+  if (!tz || !isValidZone(tz)) return showError('Chọn múi giờ trong danh sách.', f.tz);
   showError('');
   return {
     name: f.name.value.trim(), date: f.date.value, time: f.time.value.slice(0, 5),
@@ -162,7 +190,8 @@ function readForm() {
 }
 function fillForm(c) {
   f.name.value = c.name; f.date.value = c.date; f.time.value = c.time; f.city.value = c.place;
-  f.lat.value = c.lat; f.lon.value = c.lon; f.tz.value = c.tz;
+  f.lat.value = c.lat; f.lon.value = c.lon; setTz(c.tz);
+  $('tzAuto').checked = false; // keep the saved chart's zone
   f.house.value = c.house; f.zodiac.value = c.zodiac;
   setExtras(c.extras || DEFAULT_EXTRAS);
   updateZoneNote();
@@ -220,12 +249,10 @@ form.addEventListener('submit', e => {
   if (c) cast(c);
 });
 $('nowBtn').addEventListener('click', () => {
-  const tz = isValidZone(f.tz.value.trim()) ? f.tz.value.trim() : Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  }).formatToParts(new Date()).map(x => [x.type, x.value]));
-  f.date.value = `${p.year}-${p.month}-${p.day}`;
-  f.time.value = `${p.hour}:${p.minute}`;
+  const tz = isValidZone(f.tz.value) ? f.tz.value : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const n = wallNow(tz);
+  f.date.value = `${String(n.y).padStart(4, '0')}-${pad(n.m)}-${pad(n.d)}`;
+  f.time.value = `${pad(n.hh)}:${pad(n.mm)}`;
   if (!f.name.value.trim()) f.name.value = 'Thời điểm hiện tại';
   updateZoneNote();
   const c = readForm();
@@ -345,6 +372,8 @@ async function renderTab(tab) {
       await renderClassic(seq);
     } else if (tab === 'progress') {
       await renderProgress(seq);
+    } else if (tab === 'transit') {
+      await renderTransit(seq);
     } else {
       const data = await cached(`${shift}|data`, computeData);
       if (seq !== renderSeq || chartAtStart !== current) return;
@@ -642,22 +671,24 @@ function bindProgControls() {
   $('progMethod').addEventListener('change', e => { progMethod = e.target.value; store.set('progMethod', progMethod); renderTab('progress'); });
 }
 
-function progFocusHtml(natal, prog, cross, key) {
-  if (!key) return '<p class="hint">Chạm vào một điểm ở vòng ngoài (tiến trình) hoặc vòng trong (gốc) để xem các góc chiếu của nó.</p>';
+function progFocusHtml(natal, prog, cross, key, mode = 'progress') {
+  const outerName = mode === 'transit' ? 'transit' : 'tiến trình';
+  const outerShort = mode === 'transit' ? 'transit' : 'TT';
+  if (!key) return `<p class="hint">Chạm vào một điểm ở vòng ngoài (${outerName}) hoặc vòng trong (gốc) để xem các góc chiếu của nó.</p>`;
   const isProg = key.startsWith('p:');
   const k = key.replace(/^p:/, '');
   const o = (isProg ? prog : natal).objects.find(x => x.key === k);
-  if (!o) return progFocusHtml(natal, prog, cross, null);
+  if (!o) return progFocusHtml(natal, prog, cross, null, mode);
   const list = cross.filter(a => a.a === key || a.b === key);
   return `
-    <div class="focus-head">${objGlyph(k, 26)}<div><b>${esc(o.info.vi)} ${isProg ? 'tiến trình' : 'gốc'}</b>
+    <div class="focus-head">${objGlyph(k, 26)}<div><b>${esc(o.info.vi)} ${isProg ? outerName : 'gốc'}</b>
       <div class="muted">${dm(o.pos)} ${o.pos.sign.vi}${(o.natalHouse ?? o.house) ? ` · Nhà ${o.natalHouse ?? o.house}` : ''}${o.retro ? ' · Nghịch hành' : ''}</div></div></div>
     ${list.length ? `<ul class="focus-list">${list.map(a => {
       const otherKey = isProg ? a.b : a.pKey;
       const info = ASPECTS[a.type];
       return `<li><span class="asp-badge ${info.kind}">${glyph(a.type, 14, 'g-asp')}<span>${esc(info.vi)}</span></span>
-        ${objGlyph(otherKey, 16)}<span>${esc(objName(otherKey).replace(/\s*\(.*\)$/, ''))} ${isProg ? 'gốc' : 'TT'}</span><span class="muted num">${orbText(a.orb)}</span></li>`;
-    }).join('')}</ul>` : '<p class="hint">Không có góc chiếu tiến trình trong vòng 1°.</p>'}`;
+        ${objGlyph(otherKey, 16)}<span>${esc(objName(otherKey).replace(/\s*\(.*\)$/, ''))} ${isProg ? 'gốc' : outerShort}</span><span class="muted num">${orbText(a.orb)}</span></li>`;
+    }).join('')}</ul>` : `<p class="hint">Không có góc chiếu ${outerName} trong vòng orb.</p>`}`;
 }
 
 async function loadTimeline(seq, natal) {
@@ -681,6 +712,138 @@ async function loadTimeline(seq, natal) {
     }).join('')}</ul>` : '<p class="hint">Không có mốc tiến trình chính nào trong năm này.</p>';
   } catch (err) {
     if ($('progTimeline')) $('progTimeline').innerHTML = `<p class="error">Lỗi khi tính: ${esc(err.message || err)}</p>`;
+  }
+}
+
+// ---------- transits ----------
+let trWhen = null;              // {date:'YYYY-MM-DD', time:'HH:MM'} in the chart's zone; null = now
+let trOrb = store.get('trOrb', 2);
+let trSlowOnly = store.get('trSlowOnly', false);
+let trMonth = null;             // {y, m} shown in the monthly list; null = month of trWhen
+let trPinned = null;
+
+function transitWhen() {
+  if (trWhen) return trWhen;
+  const c = view();
+  const n = wallNow(isValidZone(c.tz) ? c.tz : 'UTC');
+  return { date: `${String(n.y).padStart(4, '0')}-${pad(n.m)}-${pad(n.d)}`, time: `${pad(n.hh)}:${pad(n.mm)}` };
+}
+
+async function renderTransit(seq) {
+  const natal = await cached(`${shift}|data`, computeData);
+  const when = transitWhen();
+  const c = view();
+  const tChart = { ...c, name: 'Transit', date: when.date, time: when.time };
+  const { args } = baseArgs(tChart);
+  const transit = await cached(`${shift}|tr:${when.date}T${when.time}`, () => transitSnapshot(args));
+  if (seq !== renderSeq) return;
+  natalHouses(transit, natal);
+  const cross = transitAspects(transit, natal, trOrb);
+  const [y, m, d] = when.date.split('-');
+  const { zone } = baseArgs(tChart);
+
+  tabBody.innerHTML = `
+    <div class="prog-controls">
+      <label class="field"><span>Ngày</span><input type="date" id="trDate" value="${when.date}"></label>
+      <label class="field tr-time"><span>Giờ</span><input type="time" id="trTime" value="${when.time}"></label>
+      <button type="button" class="btn small" id="trNow">Bây giờ</button>
+      <label class="field tr-orb"><span>Orb</span>
+        <select id="trOrb">${[1, 2, 3, 5].map(o => `<option value="${o}"${o === trOrb ? ' selected' : ''}>${o}°</option>`).join('')}</select>
+      </label>
+      <div class="prog-age">
+        <b>${trWhen ? 'Transit lúc' : 'Bầu trời hiện tại'} ${when.time} · ${d}/${m}/${y}</b>
+        <span class="muted">Theo múi giờ của lá số (${formatOffset(zone.total)})</span>
+      </div>
+    </div>
+    <details class="explain">
+      <summary>Transit là gì?</summary>
+      <p>Transit là vị trí thật của các hành tinh trên bầu trời ở một thời điểm (hôm nay, hay một ngày bạn chọn), đặt lên lá số gốc. Khi một hành tinh transit tạo góc chiếu với một điểm của lá số gốc, người ta xem đó là ảnh hưởng của thời điểm ấy. Hành tinh chậm (Mộc, Thổ, Thiên Vương, Hải Vương, Diêm Vương) tạo các giai đoạn dài vài tháng tới vài năm; hành tinh nhanh (Mặt Trời, Thủy, Kim, Hỏa) chỉ vài ngày; Mặt Trăng vài giờ.</p>
+      <p>Vòng ngoài là transit, vòng trong là lá số gốc. Đường nối là góc chiếu transit → gốc trong vòng orb đã chọn.</p>
+    </details>
+    <div class="wheel-layout">
+      <div class="wheel-box" id="trBox">${renderWheel(natal, { title: 'Bánh xe đôi: gốc và transit', outer: transit, cross, outerLabel: ' (transit)' })}</div>
+      <aside class="wheel-side">
+        <div class="focus card-inset" id="trFocus">${progFocusHtml(natal, transit, cross, null, 'transit')}</div>
+        <div class="legend">
+          <span><i class="ring-dot outer"></i>Vòng ngoài: transit</span>
+          <span><i class="ring-dot"></i>Vòng trong: lá số gốc</span>
+          <span><i class="lg hard"></i>Xung</span><span><i class="lg soft"></i>Hài hòa</span><span><i class="lg neutral"></i>Hợp</span>
+        </div>
+      </aside>
+    </div>
+    <div class="grid-2 prog-tables">
+      <section>
+        <h3>Góc chiếu transit → gốc <span class="muted">(orb ≤ ${trOrb}°)</span></h3>
+        ${cross.length ? `<div class="table-wrap"><table class="tbl aspects">
+          <thead><tr><th>Transit</th><th>Góc chiếu</th><th>Gốc</th><th class="num">Orb</th><th></th></tr></thead>
+          <tbody>${cross.map(a => {
+            const info = ASPECTS[a.type];
+            return `<tr class="${SLOW.includes(a.pKey) ? 'slow' : ''}">
+              <td class="obj" title="${esc(objName(a.pKey))} transit">${objGlyph(a.pKey)}<span>${esc(objName(a.pKey).replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td><span class="asp-badge ${info.kind}">${glyph(a.type, 16, 'g-asp')}<span>${esc(info.vi)}</span></span></td>
+              <td class="obj" title="${esc(objName(a.b))} gốc">${objGlyph(a.b)}<span>${esc(objName(a.b).replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td class="num">${orbText(a.orb)}</td>
+              <td class="muted">${a.applying ? 'đang tới' : 'đang tách'}</td></tr>`;
+          }).join('')}</tbody></table></div>`
+          : `<p class="hint">Không có góc chiếu transit nào trong vòng ${trOrb}°.</p>`}
+      </section>
+      <section>
+        <h3>Vị trí transit</h3>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr><th>Thiên thể</th><th>Transit</th><th class="num">Nhà gốc</th></tr></thead>
+          <tbody>${transit.objects.map(o => `<tr>
+              <td class="obj">${objGlyph(o.key)}<span>${esc(o.info.vi.replace(/\s*\(.*\)$/, ''))}</span></td>
+              <td>${signCell(o.pos)}${o.retro ? ' <span class="retro" title="Nghịch hành">℞</span>' : ''}</td>
+              <td class="num">${o.natalHouse ?? '–'}</td></tr>`).join('')}</tbody></table></div>
+      </section>
+    </div>
+    <section class="timeline">
+      <div class="tl-head">
+        <button type="button" class="icon-btn small" id="trPrev" aria-label="Tháng trước">‹</button>
+        <h3 id="trTitle"></h3>
+        <button type="button" class="icon-btn small" id="trNext" aria-label="Tháng sau">›</button>
+        <label class="toggle tr-slow"><input type="checkbox" id="trSlow"${trSlowOnly ? ' checked' : ''}> Chỉ hành tinh chậm</label>
+      </div>
+      <div id="trList"><div class="loading"><span class="spinner"></span>Đang tìm các transit trong tháng…</div></div>
+      <p class="hint">Danh sách do Astrolog tính (giờ chính xác, theo múi giờ lúc sinh của lá số). Không tính Mặt Trăng transit vì nó tạo góc chiếu vài lần mỗi ngày.</p>
+    </section>`;
+
+  const go = () => { trWhen = { date: $('trDate').value || when.date, time: $('trTime').value || when.time }; trMonth = null; renderTab('transit'); };
+  $('trDate').addEventListener('change', go);
+  $('trTime').addEventListener('change', go);
+  $('trNow').addEventListener('click', () => { trWhen = null; trMonth = null; renderTab('transit'); });
+  $('trOrb').addEventListener('change', e => { trOrb = +e.target.value; store.set('trOrb', trOrb); renderTab('transit'); });
+  $('trSlow').addEventListener('change', e => { trSlowOnly = e.target.checked; store.set('trSlowOnly', trSlowOnly); loadTransitMonth(natal); });
+  attachWheel($('trBox'), key => { trPinned = key; $('trFocus').innerHTML = progFocusHtml(natal, transit, cross, key, 'transit'); }, trPinned);
+  if (!trMonth) trMonth = { y: +y, m: +m };
+  loadTransitMonth(natal);
+}
+
+async function loadTransitMonth(natal) {
+  const { y, m } = trMonth;
+  $('trTitle').textContent = `Transit tháng ${m}/${y}`;
+  const step = dir => { let mm = m + dir, yy = y; if (mm < 1) { mm = 12; yy--; } if (mm > 12) { mm = 1; yy++; } trMonth = { y: yy, m: mm }; loadTransitMonth(natal); };
+  $('trPrev').onclick = () => step(-1);
+  $('trNext').onclick = () => step(1);
+  $('trList').innerHTML = '<div class="loading"><span class="spinner"></span>Đang tìm các transit trong tháng…</div>';
+  const movers = natal.objects.map(o => o.key).filter(k => k !== 'moon' && !OBJECTS[k]?.angle && (!trSlowOnly || SLOW.includes(k)));
+  try {
+    const { args, zoneArgs } = progArgs();
+    const events = await cached(`${shift}|trm:${y}-${m}:${trSlowOnly}`, () => monthTransits(args, zoneArgs, movers, m, y));
+    if (!$('trList') || trMonth.y !== y || trMonth.m !== m) return;
+    const now = Date.now();
+    $('trList').innerHTML = events.length ? `<ul class="tl-list">${events.map(e => {
+      const info = ASPECTS[e.type] || { vi: e.type, kind: 'minor' };
+      const when = Date.UTC(e.y, e.m - 1, e.d, e.hh, e.mm);
+      return `<li class="${when < now ? 'past' : ''}${SLOW.includes(e.t) ? ' slow' : ''}">
+        <span class="tl-date">${pad(e.d)}/${pad(e.m)} ${pad(e.hh)}:${pad(e.mm)}</span>
+        <span class="tl-what">${objGlyph(e.t, 16)}<span>${esc(objName(e.t).replace(/\s*\(.*\)$/, ''))}${e.retro ? ' <span class="retro">℞</span>' : ''}</span>
+          <span class="asp-badge ${info.kind}">${glyph(e.type, 14, 'g-asp') || esc(e.type)}<span>${esc(info.vi)}</span></span>
+          ${objGlyph(e.n, 16)}<span>${esc(objName(e.n).replace(/\s*\(.*\)$/, ''))} gốc</span>
+          ${e.note ? `<span class="muted">(${esc(e.note === 'Solar Return' ? 'sinh nhật Mặt Trời' : e.note === 'Lunar Return' ? 'trở về Mặt Trăng' : e.note)})</span>` : ''}</span></li>`;
+    }).join('')}</ul>` : '<p class="hint">Không có transit nào khớp chính xác trong tháng này.</p>';
+  } catch (err) {
+    if ($('trList')) $('trList').innerHTML = `<p class="error">Lỗi khi tính: ${esc(err.message || err)}</p>`;
   }
 }
 
