@@ -1,5 +1,8 @@
 import { initEngine, runAstrolog, astrologHtmlToFragment } from './engine.js';
-import { buildChart, ASPECTS, ELEMENTS, MODES, SIGNS, OBJECTS, splitLon } from './chartdata.js';
+import {
+  buildChart, ASPECTS, ELEMENTS, MODES, OBJECTS, OBJECT_GROUPS, CORE, DEFAULT_EXTRAS,
+  objectSwitches, splitLon, norm,
+} from './chartdata.js';
 import { renderWheel, attachWheel } from './wheel.js';
 import { glyph } from './glyphs.js';
 import {
@@ -151,15 +154,62 @@ function readForm() {
   return {
     name: f.name.value.trim(), date: f.date.value, time: f.time.value.slice(0, 5),
     place: f.city.value.trim() || `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
-    lat, lon, tz, house: f.house.value, zodiac: f.zodiac.value,
+    lat, lon, tz, house: f.house.value, zodiac: f.zodiac.value, extras: selectedExtras(),
   };
 }
 function fillForm(c) {
   f.name.value = c.name; f.date.value = c.date; f.time.value = c.time; f.city.value = c.place;
   f.lat.value = c.lat; f.lon.value = c.lon; f.tz.value = c.tz;
   f.house.value = c.house; f.zodiac.value = c.zodiac;
+  setExtras(c.extras || DEFAULT_EXTRAS);
   updateZoneNote();
 }
+
+// ---------- object picker (extra planets and points) ----------
+const picker = $('objectPicker');
+picker.innerHTML = OBJECT_GROUPS.map(g => `
+  <div class="obj-group">
+    <div class="obj-group-head"><span>${g.vi}</span>
+      <button type="button" class="link-btn" data-group="${g.id}">Chọn hết</button></div>
+    <div class="obj-chips">${g.keys.map(k => `
+      <label class="obj-chip" title="${esc(OBJECTS[k].vi)}">
+        <input type="checkbox" value="${k}">
+        ${objGlyph(k, 15)}<span>${esc(OBJECTS[k].vi.replace(/\s*\(.*\)$/, ''))}</span>
+      </label>`).join('')}</div>
+  </div>`).join('');
+
+function selectedExtras() {
+  return [...picker.querySelectorAll('input:checked')].map(i => i.value);
+}
+function setExtras(keys) {
+  picker.querySelectorAll('input').forEach(i => { i.checked = keys.includes(i.value); });
+  updatePickerCount();
+}
+function updatePickerCount() {
+  $('objCount').textContent = `${CORE.length + 2 + selectedExtras().length} thiên thể`;
+}
+function onExtrasChange() {
+  updatePickerCount();
+  store.set('extras', selectedExtras());
+  if (current) { current = { ...current, extras: selectedExtras() }; resetCache(); renderTab(activeTab); }
+}
+picker.addEventListener('change', onExtrasChange);
+picker.addEventListener('click', e => {
+  const b = e.target.closest('[data-group]');
+  if (!b) return;
+  const boxes = [...picker.querySelectorAll(`.obj-group:has([data-group="${b.dataset.group}"]) input`)];
+  const all = boxes.every(i => i.checked);
+  boxes.forEach(i => { i.checked = !all; });
+  onExtrasChange();
+});
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  const p = b.dataset.preset;
+  setExtras(p === 'basic' ? DEFAULT_EXTRAS
+    : p === 'popular' ? ['nort', 'sout', 'lili', 'fort', 'vert', 'chir', 'cere', 'pall', 'juno', 'vest']
+      : OBJECT_GROUPS.flatMap(g => g.keys));
+  onExtrasChange();
+}));
+setExtras(store.get('extras', DEFAULT_EXTRAS));
 
 form.addEventListener('submit', e => {
   e.preventDefault();
@@ -180,11 +230,27 @@ $('nowBtn').addEventListener('click', () => {
 });
 
 // ---------- chart ----------
-let current = null;
+let current = null;   // the chart as entered
+let shift = 0;        // minutes added while rectifying the birth time
 let activeTab = 'wheel';
 let wheelLight = null; // null = follow theme
 let renderSeq = 0;
 const cache = new Map();
+
+/** The chart with the rectification shift applied. */
+function shiftChart(c, minutes) {
+  if (!minutes) return c;
+  const [y, m, d] = c.date.split('-').map(Number);
+  const [hh, mm] = c.time.split(':').map(Number);
+  const t = new Date(Date.UTC(2000, m - 1, d, hh, mm) + minutes * 60000);
+  t.setUTCFullYear(t.getUTCFullYear() - 2000 + y); // keeps years before 100 AD intact
+  return {
+    ...c,
+    date: `${String(t.getUTCFullYear()).padStart(4, '0')}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`,
+    time: `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`,
+  };
+}
+const view = () => shiftChart(current, shift);
 
 function baseArgs(c) {
   const [y, m, d] = c.date.split('-').map(Number);
@@ -192,20 +258,38 @@ function baseArgs(c) {
   const z = zoneInfo(c.tz, y, m, d, hh, mm);
   const args = ['-qb', String(m), String(d), String(y), `${hh}:${pad(mm)}`,
     astroDst(z.dst), astroZone(z.standard), astroLon(c.lon), astroLat(c.lat),
-    '-zi', ascii(c.name) || 'Chart', ascii(c.place) || '-', '-c', String(c.house)];
+    '-zi', ascii(c.name) || 'Chart', ascii(c.place) || '-', '-c', String(c.house),
+    ...objectSwitches(c.extras || DEFAULT_EXTRAS)];
   if (c.zodiac === 'sidereal') args.push('-s');
   return { args, zone: z };
 }
 
-function cast(c) {
-  current = c;
+function resetCache() {
   cache.forEach(p => Promise.resolve(p).then(v => { if (v?.url) URL.revokeObjectURL(v.url); }, () => {}));
   cache.clear();
+}
+
+function fmtShift(min) {
+  const a = Math.abs(min), h = Math.floor(a / 60), m = a % 60;
+  return (min < 0 ? '−' : '+') + (h ? `${h} giờ ${m ? m + ' phút' : ''}` : `${m} phút`).trim();
+}
+
+function updateHeader() {
+  const c = view();
   const { zone } = baseArgs(c);
   const [y, m, d] = c.date.split('-');
   $('chartTitle').textContent = c.name || 'Lá số';
-  $('chartMeta').textContent = `${d}/${m}/${y} lúc ${c.time} · ${c.place} · ${formatOffset(zone.total)}` +
-    (c.zodiac === 'sidereal' ? ' · Sidereal' : '') + ` · ${f.house.querySelector(`option[value="${c.house}"]`)?.textContent || ''}`;
+  $('chartMeta').innerHTML = esc(`${d}/${m}/${y} lúc ${c.time}`) +
+    (shift ? ` <span class="shift-badge">đã chỉnh ${esc(fmtShift(shift))}</span>` : '') +
+    esc(` · ${c.place} · ${formatOffset(zone.total)}` + (c.zodiac === 'sidereal' ? ' · Sidereal' : '') +
+      ` · ${f.house.querySelector(`option[value="${c.house}"]`)?.textContent || ''}`);
+}
+
+function cast(c) {
+  current = c;
+  shift = 0;
+  resetCache();
+  updateHeader();
   $('emptyState').hidden = true;
   $('chartView').hidden = false;
   updateSaveBtn();
@@ -230,7 +314,14 @@ const CLASSIC_VIEWS = [
 let classicView = 'wheel';
 
 async function cached(key, make) {
-  if (!cache.has(key)) cache.set(key, make());
+  if (!cache.has(key)) {
+    cache.set(key, make());
+    // Rectifying creates one entry per tried time; keep only the most recent ones.
+    for (const k of cache.keys()) {
+      if (cache.size <= 40) break;
+      if (k !== key) { Promise.resolve(cache.get(k)).then(v => { if (v?.url) URL.revokeObjectURL(v.url); }, () => {}); cache.delete(k); }
+    }
+  }
   try { return await cache.get(key); } catch (e) { cache.delete(key); throw e; }
 }
 
@@ -243,13 +334,13 @@ async function renderTab(tab) {
   tabBody.innerHTML = '<div class="loading"><span class="spinner"></span>Đang tính…</div>';
   try {
     if (tab === 'interp') {
-      const v = await cached('text:interp', () => computeText('interp'));
+      const v = await cached(`${shift}|text:interp`, () => computeText('interp'));
       if (seq !== renderSeq) return;
       tabBody.innerHTML = `<p class="note">${TEXT_TABS.interp.note}</p><div class="term">${v.html}</div>`;
     } else if (tab === 'classic') {
       await renderClassic(seq);
     } else {
-      const data = await cached('data', computeData);
+      const data = await cached(`${shift}|data`, computeData);
       if (seq !== renderSeq || chartAtStart !== current) return;
       if (tab === 'wheel') showSvgWheel(data);
       else if (tab === 'positions') tabBody.innerHTML = positionsHtml(data);
@@ -266,12 +357,12 @@ async function renderClassic(seq) {
     `<button type="button" data-view="${k}" aria-pressed="${k === classicView}">${label}</button>`).join('')}</div>`;
   let body;
   if (classicView === 'wheel') {
-    const v = await cached(`classic:wheel:${light}`, () => computeWheel(light));
+    const v = await cached(`${shift}|classic:wheel:${light}`, () => computeWheel(light));
     if (seq !== renderSeq) return;
     tabBody.innerHTML = bar + `<p class="note">Hình bánh xe do chính Astrolog vẽ, giống bản trên Windows.</p>`;
     showWheel(v, light, true);
   } else {
-    const v = await cached(`text:${classicView}`, () => computeText(classicView));
+    const v = await cached(`${shift}|text:${classicView}`, () => computeText(classicView));
     if (seq !== renderSeq) return;
     body = `<div class="term">${v.html}</div>`;
     tabBody.innerHTML = bar + body;
@@ -283,8 +374,8 @@ async function renderClassic(seq) {
 }
 
 async function computeData() {
-  const { args } = baseArgs(current);
-  const res = await runAstrolog([...args, '_X', '_k', '-a', '-o0', '/pos.as'], ['/pos.as']);
+  const { args } = baseArgs(view());
+  const res = await runAstrolog([...args, '_X', '_k', '-sd', '-v', '-a', '-o0', '/pos.as'], ['/pos.as']);
   const pos = res.files['/pos.as'];
   if (!pos) throw new Error(res.stderr || res.stdout || 'không có dữ liệu vị trí');
   return buildChart(new TextDecoder('latin1').decode(pos), res.stdout);
@@ -293,8 +384,11 @@ async function computeData() {
 // ---------- structured views ----------
 const ASPECT_KIND_VI = { hard: 'Xung khắc', soft: 'Hài hòa', neutral: 'Hợp', minor: 'Góc phụ' };
 const objName = k => OBJECTS[k]?.vi || k;
-const objGlyph = (k, size = 18) => glyph(k, size, 'g-obj') ||
-  `<span class="g-txt" style="min-width:${size}px">${esc(OBJECTS[k]?.angle || k)}</span>`;
+function objGlyph(k, size = 18) {
+  const o = OBJECTS[k];
+  return (o?.g && glyph(o.g, size, 'g-obj')) ||
+    `<span class="g-txt" style="min-width:${size}px">${esc(o?.abbr || k)}</span>`;
+}
 const dm = o => `${o.deg}°${String(o.min).padStart(2, '0')}′`;
 const signCell = p => `<span class="sign-cell el-${p.sign.el}">${glyph(p.sign.id, 16, 'g-sign')}<span>${dm(p)} ${p.sign.vi}</span></span>`;
 const orbText = orb => { const m = Math.round(Math.abs(orb) * 60); return `${Math.floor(m / 60)}°${String(m % 60).padStart(2, '0')}′`; };
@@ -334,7 +428,7 @@ function positionsHtml(data) {
       <td class="obj">${objGlyph(o.key)}<span>${esc(o.info.vi.replace(/\s*\(.*\)$/, ''))}<span class="paren">${esc((o.info.vi.match(/\s*\(.*\)$/) || [''])[0])}</span></span></td>
       <td>${signCell(o.pos)}</td>
       <td class="num">${o.house ?? '–'}</td>
-      <td class="num">${o.retro ? '<span class="retro" title="Nghịch hành">℞</span>' : ''}<span class="spd">${o.key === 'asc' || o.key === 'mid' ? '' : (o.speed >= 0 ? '+' : '') + o.speed.toFixed(3)}</span></td>
+      <td class="num">${o.retro ? '<span class="retro" title="Nghịch hành">℞</span>' : ''}<span class="spd">${o.info.angle || o.key === 'fort' || o.key === 'vert' || o.key === 'east' ? '' : (o.speed >= 0 ? '+' : '') + o.speed.toFixed(3)}</span></td>
     </tr>`).join('');
   const houseRows = data.cusps ? data.cusps.map((c, i) => `
     <tr><td class="num">${i + 1}</td><td>${signCell(splitLon(c))}</td></tr>`).join('') : '';
@@ -407,6 +501,7 @@ function focusHtml(data, key) {
     return `<p class="hint">Chạm hoặc rê chuột vào một hành tinh để xem vị trí và các góc chiếu của nó.</p>`;
   }
   const o = data.objects.find(x => x.key === key);
+  if (!o) return focusHtml(data, null);
   const list = data.aspects.filter(a => a.a === key || a.b === key).sort((a, b) => b.power - a.power);
   return `
     <div class="focus-head">${objGlyph(key, 26)}<div><b>${esc(o.info.vi)}</b>
@@ -419,14 +514,36 @@ function focusHtml(data, key) {
     }).join('')}</ul>` : '<p class="hint">Không có góc chiếu chính.</p>'}`;
 }
 
+// ---------- wheel + birth-time rectification ----------
+let pinnedKey = null;
+let rotateMode = false;
+let renderedShift = 0;
+let wheelBusy = false, wheelDirty = false;
+
 function showSvgWheel(data) {
-  const svg = renderWheel(data, { title: `Bánh xe lá số của ${current.name || 'lá số'}` });
   tabBody.innerHTML = `
+    <div class="rectify" id="rectify">
+      <div class="rect-time">
+        <div><b id="rectTime"></b> <span id="rectShift" class="shift-badge" hidden></span></div>
+        <div class="muted rect-angles" id="rectAngles"></div>
+      </div>
+      <div class="rect-steps" role="group" aria-label="Chỉnh giờ sinh">
+        ${[-60, -10, -1, 1, 10, 60].map(s => `<button type="button" data-step="${s}" aria-label="${s > 0 ? 'Tăng' : 'Giảm'} ${Math.abs(s) === 60 ? '1 giờ' : Math.abs(s) + ' phút'}">${s < 0 ? '−' : '+'}${Math.abs(s) === 60 ? '1g' : Math.abs(s) + 'p'}</button>`).join('')}
+      </div>
+      <div class="rect-actions">
+        <button type="button" class="btn small" id="rotateBtn" aria-pressed="${rotateMode}">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+          Xoay bánh xe</button>
+        <button type="button" class="btn small" id="rectReset">Đặt lại</button>
+        <button type="button" class="btn small accent" id="rectApply">Dùng giờ này</button>
+      </div>
+      <p class="hint rect-hint" id="rectHint"${rotateMode ? '' : ' hidden'}>Kéo bánh xe theo chiều kim đồng hồ để tăng giờ, ngược chiều để lùi giờ (1° ≈ 4 phút). Trên máy tính có thể dùng phím ← → (giữ Shift: 10 phút).</p>
+    </div>
     <div class="wheel-layout">
-      <div class="wheel-box">${svg}</div>
+      <div class="wheel-box${rotateMode ? ' rotating' : ''}" id="wheelBox" tabindex="0" aria-label="Bánh xe lá số"></div>
       <aside class="wheel-side">
-        <div class="focus card-inset" id="focusInfo">${focusHtml(data, null)}</div>
-        <div class="card-inset">${balanceHtml(data)}</div>
+        <div class="focus card-inset" id="focusInfo"></div>
+        <div class="card-inset" id="balanceInfo"></div>
         <div class="legend">
           <span><i class="lg hard"></i>Xung khắc</span>
           <span><i class="lg soft"></i>Hài hòa</span>
@@ -434,11 +551,133 @@ function showSvgWheel(data) {
         </div>
       </aside>
     </div>`;
-  attachWheel(tabBody, key => { $('focusInfo').innerHTML = focusHtml(data, key); });
+  bindRectify();
+  drawWheel(data, shift);
+}
+
+function drawWheel(data, forShift) {
+  const box = $('wheelBox');
+  box.innerHTML = renderWheel(data, { title: `Bánh xe lá số của ${current.name || 'lá số'}` });
+  renderedShift = forShift;
+  $('balanceInfo').innerHTML = balanceHtml(data);
+  $('focusInfo').innerHTML = focusHtml(data, pinnedKey);
+  attachWheel(box, key => { pinnedKey = key; $('focusInfo').innerHTML = focusHtml(data, key); }, pinnedKey);
+  const asc = data.objects.find(o => o.key === 'asce'), mc = data.objects.find(o => o.key === 'midh');
+  $('rectAngles').textContent = [asc && `AC ${dm(asc.pos)} ${asc.pos.sign.vi}`, mc && `MC ${dm(mc.pos)} ${mc.pos.sign.vi}`].filter(Boolean).join(' · ');
+  previewRotation();
+  updateRectControls();
+}
+
+function previewRotation() {
+  const svg = $('wheelBox')?.querySelector('svg');
+  if (svg) svg.style.transform = shift === renderedShift ? '' : `rotate(${(shift - renderedShift) / 4}deg)`;
+}
+
+function updateRectControls() {
+  if (!$('rectify')) return;
+  const c = view();
+  const [y, m, d] = c.date.split('-');
+  $('rectTime').textContent = `${c.time} · ${d}/${m}/${y}`;
+  $('rectShift').hidden = !shift;
+  $('rectShift').textContent = shift ? fmtShift(shift) : '';
+  $('rectReset').disabled = !shift;
+  $('rectApply').disabled = !shift;
+}
+
+function setShift(s) {
+  s = Math.max(-4320, Math.min(4320, Math.round(s)));
+  if (s === shift) return;
+  shift = s;
+  updateHeader();
+  updateRectControls();
+  previewRotation();
+  scheduleWheel();
+}
+
+async function scheduleWheel() {
+  if (wheelBusy) { wheelDirty = true; return; }
+  wheelBusy = true;
+  try {
+    do {
+      wheelDirty = false;
+      const s = shift;
+      const data = await cached(`${s}|data`, computeData);
+      if (activeTab !== 'wheel' || !$('wheelBox')) break;
+      drawWheel(data, s);
+    } while (wheelDirty);
+  } catch (err) {
+    toast('Lỗi khi tính lá số: ' + (err.message || err));
+  } finally {
+    wheelBusy = false;
+  }
+}
+
+function bindRectify() {
+  const box = $('wheelBox');
+  $('rectify').addEventListener('click', e => {
+    const step = e.target.closest('[data-step]');
+    if (step) setShift(shift + +step.dataset.step);
+  });
+  $('rotateBtn').addEventListener('click', () => {
+    rotateMode = !rotateMode;
+    $('rotateBtn').setAttribute('aria-pressed', String(rotateMode));
+    $('rectHint').hidden = !rotateMode;
+    box.classList.toggle('rotating', rotateMode);
+    if (rotateMode) box.focus({ preventScroll: true });
+  });
+  $('rectReset').addEventListener('click', () => setShift(0));
+  $('rectApply').addEventListener('click', () => {
+    const c = { ...view() };
+    fillForm(c);
+    cast(c);
+    toast(`Đã đổi giờ sinh thành ${c.time}.`);
+  });
+
+  // Drag to rotate (only in rotate mode, so normal swipes still scroll the page).
+  let st = null, justDragged = false;
+  const angle = e => {
+    const r = box.getBoundingClientRect();
+    return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+  };
+  box.addEventListener('pointerdown', e => {
+    if (!rotateMode || e.button > 0) return;
+    st = { id: e.pointerId, x: e.clientX, y: e.clientY, last: angle(e), total: 0, base: shift, moved: false };
+  });
+  box.addEventListener('pointermove', e => {
+    if (!st || e.pointerId !== st.id) return;
+    if (!st.moved) {
+      if (Math.hypot(e.clientX - st.x, e.clientY - st.y) < 6) return;
+      st.moved = true;
+      box.setPointerCapture(e.pointerId);
+      box.classList.add('dragging');
+    }
+    const a = angle(e);
+    let d = a - st.last;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    st.last = a;
+    st.total += d;
+    setShift(st.base + st.total * 4);
+  });
+  const end = () => {
+    if (st?.moved) { justDragged = true; box.classList.remove('dragging'); }
+    st = null;
+  };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+  box.addEventListener('click', e => {
+    if (justDragged) { e.stopPropagation(); e.preventDefault(); justDragged = false; }
+  }, true);
+  box.addEventListener('keydown', e => {
+    if (!rotateMode) return;
+    const step = e.shiftKey ? 10 : 1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { setShift(shift + step); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { setShift(shift - step); e.preventDefault(); }
+  });
 }
 
 async function computeWheel(light) {
-  const { args } = baseArgs(current);
+  const { args } = baseArgs(view());
   const res = await runAstrolog([...args, '-X', '-Xbw', '-Xw', '900', '900', '_Xv0', '-Xt', '-XS', '200', '-Xs', '200', light ? '=Xr' : '_Xr', '-Xo', '/chart.bmp'], ['/chart.bmp']);
   const bmp = res.files['/chart.bmp'];
   if (!bmp) throw new Error(res.stderr || res.stdout || 'không tạo được hình');
@@ -446,7 +685,7 @@ async function computeWheel(light) {
 }
 
 async function computeText(tab) {
-  const { args } = baseArgs(current);
+  const { args } = baseArgs(view());
   const res = await runAstrolog([...args, '_X', ...TEXT_TABS[tab].sw, '-kh', '-os', '/out.html'], ['/out.html']);
   const out = res.files['/out.html'];
   if (!out) throw new Error(res.stderr || res.stdout || 'không có kết quả');

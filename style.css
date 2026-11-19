@@ -203,6 +203,70 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   h1 { font-size: 19px; }
 }
 
+/* ---------- extra objects picker ---------- */
+.obj-section { display: grid; gap: 8px; margin-top: 12px; }
+.obj-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.obj-head span:first-child { color: var(--text); font-weight: 500; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  border: 1px solid var(--border-strong); background: var(--surface); border-radius: 99px;
+  padding: 4px 12px; font-size: 13px; cursor: pointer;
+}
+.chip-btn:hover { background: var(--surface-2); }
+.obj-picker { display: grid; gap: 10px; max-height: 340px; overflow: auto; padding-right: 2px; }
+.obj-group-head { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
+.link-btn { border: 0; background: none; color: var(--accent); font-size: 12.5px; cursor: pointer; padding: 2px 4px; }
+.obj-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.obj-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 6px; border-radius: 99px;
+  border: 1px solid var(--border-strong); font-size: 13px; cursor: pointer; user-select: none;
+}
+.obj-chip input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+.obj-chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.obj-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--accent-soft); }
+.obj-chip .g-txt { font-size: 10.5px; }
+
+/* ---------- birth-time rectification ---------- */
+.shift-badge {
+  display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px;
+  background: var(--accent-soft); color: var(--accent); vertical-align: 1px;
+}
+.rectify {
+  display: grid; grid-template-columns: minmax(160px, auto) auto 1fr; align-items: center; gap: 10px 16px;
+  padding: 10px 12px; margin-bottom: 14px; border-radius: 12px; background: var(--surface-2);
+}
+.rect-time b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.rect-angles { font-size: 12.5px; }
+.rect-steps { display: flex; gap: 4px; }
+.rect-steps button {
+  min-width: 44px; height: 34px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface);
+  font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.rect-steps button:hover { border-color: var(--accent); }
+.rect-steps button:active { transform: scale(.96); }
+.rect-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.rect-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn.accent { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.accent:disabled { background: var(--surface); color: var(--muted); border-color: var(--border-strong); opacity: .7; cursor: default; }
+.rect-hint { grid-column: 1 / -1; }
+.wheel-box { outline: none; border-radius: 50%; }
+.wheel-box.rotating { touch-action: none; cursor: grab; }
+.wheel-box.rotating .wheel-svg { filter: drop-shadow(0 0 0 transparent); }
+.wheel-box.rotating::after { content: none; }
+.wheel-box.dragging { cursor: grabbing; }
+.wheel-box.rotating .w-face { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 10 8; }
+.wheel-svg { transition: transform .12s ease-out; }
+@media (max-width: 1150px) {
+  .rectify { grid-template-columns: 1fr auto; }
+  .rect-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+  .rectify { grid-template-columns: 1fr; }
+  .rect-steps { justify-content: space-between; }
+  .rect-steps button { flex: 1; min-width: 0; }
+}
+
 /* ---------- step 3: install, offline ---------- */
 .install-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .install-btn:hover { background: var(--accent); filter: brightness(1.06); }

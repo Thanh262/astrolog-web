@@ -34,7 +34,7 @@ function spread(items, sep) {
 }
 
 export function renderWheel(chart, { title = '' } = {}) {
-  const ascLon = chart.cusps ? chart.cusps[0] : (chart.objects.find(o => o.key === 'asc')?.lon ?? 0);
+  const ascLon = chart.cusps ? chart.cusps[0] : (chart.objects.find(o => o.key === 'asce')?.lon ?? 0);
   const rad = lon => ((180 + lon - ascLon) * Math.PI) / 180;
   const pt = (r, lon) => [r * Math.cos(rad(lon)), -r * Math.sin(rad(lon))];
   const xy = (r, lon) => { const [x, y] = pt(r, lon); return `${f(x)} ${f(y)}`; };
@@ -87,8 +87,8 @@ export function renderWheel(chart, { title = '' } = {}) {
   });
 
   // Planets
-  const planets = chart.objects.filter(o => o.key !== 'asc' && o.key !== 'mid');
-  const disp = spread(planets, 8.4);
+  const planets = chart.objects.filter(o => !o.info.angle);
+  const disp = spread(planets, Math.min(8.4, 340 / Math.max(planets.length, 1)));
   planets.forEach((o, i) => {
     const d = disp[i];
     const label = `${o.info.vi}: ${o.pos.deg}°${String(o.pos.min).padStart(2, '0')}′ ${o.pos.sign.vi}` +
@@ -100,9 +100,9 @@ export function renderWheel(chart, { title = '' } = {}) {
       line(R.tick, o.lon, R.pl + 24, d, 'pl-lead'),
       `<circle cx="${f(pt(R.a, o.lon)[0])}" cy="${f(pt(R.a, o.lon)[1])}" r="4" class="pl-dot"/>`,
       `<circle cx="${f(gx)}" cy="${f(gy)}" r="33" class="pl-hit"/>`,
-      hasGlyph(o.key)
-        ? `<g class="pl-glyph" transform="translate(${f(gx - 10 * GLYPH)} ${f(gy - 10 * GLYPH)}) scale(${GLYPH})">${glyphInner(o.key)}</g>`
-        : `<text x="${f(gx)}" y="${f(gy)}" class="pl-text">${esc(o.name.slice(0, 3))}</text>`,
+      hasGlyph(o.info.g)
+        ? `<g class="pl-glyph" transform="translate(${f(gx - 10 * GLYPH)} ${f(gy - 10 * GLYPH)}) scale(${GLYPH})">${glyphInner(o.info.g)}</g>`
+        : `<text x="${f(gx)}" y="${f(gy)}" class="pl-text">${esc(o.info.abbr || o.name.slice(0, 3))}</text>`,
       `<text x="${f(tx)}" y="${f(ty)}" class="pl-deg">${o.pos.deg}°<tspan class="pl-min">${String(o.pos.min).padStart(2, '0')}′</tspan></text>`,
     ];
     if (o.retro) {
@@ -116,9 +116,9 @@ export function renderWheel(chart, { title = '' } = {}) {
 }
 
 /** Hover/tap a planet to highlight its aspects. Calls onSelect(key|null). */
-export function attachWheel(root, onSelect) {
+export function attachWheel(root, onSelect, initialPinned = null) {
   const svg = root.querySelector('.wheel-svg');
-  let pinned = null;
+  let pinned = svg.querySelector(`.pl[data-k="${initialPinned}"]`) ? initialPinned : null;
   const show = key => {
     svg.classList.toggle('focus', !!key);
     svg.querySelectorAll('.pl').forEach(p => { p.classList.remove('linked'); p.classList.toggle('on', p.dataset.k === key); });
@@ -143,4 +143,5 @@ export function attachWheel(root, onSelect) {
     p.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
   });
   svg.addEventListener('click', () => { if (pinned) { pinned = null; show(null); } });
+  if (pinned) show(pinned);
 }

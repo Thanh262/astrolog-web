@@ -1,7 +1,10 @@
 // Runs the Astrolog WebAssembly build. Each call gets a fresh instance (Astrolog keeps
 // global state between charts), but the compiled module and data files are loaded once.
 
-const DATA_FILES = ['astrolog.as', 'atlas.as', 'timezone.as', 'sefstars.txt', 'seorbel.txt', 'astexo.csv'];
+// Only what chart casting needs. atlas.as / timezone.as (city lookups) and astexo.csv
+// (exoplanets) are not used by the switches this app passes, and copying them into every
+// fresh instance would slow down live rectification.
+const DATA_FILES = ['astrolog.as', 'sefstars.txt', 'seorbel.txt'];
 
 let ready = null;
 
