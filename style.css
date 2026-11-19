@@ -232,11 +232,18 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   background: var(--accent-soft); color: var(--accent); vertical-align: 1px;
 }
 .rectify {
-  display: grid; grid-template-columns: minmax(160px, auto) auto 1fr; align-items: center; gap: 10px 16px;
+  display: grid; grid-template-columns: 236px auto 1fr; align-items: center; gap: 10px 16px;
   padding: 10px 12px; margin-bottom: 14px; border-radius: 12px; background: var(--surface-2);
 }
+/* Every line here has a fixed height and never wraps, so rotating the wheel can't shift the layout. */
+.rect-time { min-width: 0; }
+.rect-line { display: flex; align-items: center; gap: 8px; height: 24px; white-space: nowrap; }
 .rect-time b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.rect-angles { font-size: 12.5px; }
+.rect-line .shift-badge { flex: none; }
+.shift-badge.zero { background: transparent; color: var(--muted); font-weight: 400; padding-left: 0; }
+.rect-angles { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rect-angles span { display: block; height: 18px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta-shifted { color: var(--accent); font-weight: 600; }
 .rect-steps { display: flex; gap: 4px; }
 .rect-steps button {
   min-width: 44px; height: 34px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface);
