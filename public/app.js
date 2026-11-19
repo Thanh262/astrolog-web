@@ -279,8 +279,9 @@ function updateHeader() {
   const { zone } = baseArgs(c);
   const [y, m, d] = c.date.split('-');
   $('chartTitle').textContent = c.name || 'Lá số';
-  $('chartMeta').innerHTML = esc(`${d}/${m}/${y} lúc ${c.time}`) +
-    (shift ? ` <span class="shift-badge">đã chỉnh ${esc(fmtShift(shift))}</span>` : '') +
+  // Same text length whatever the shift, so the header never re-wraps while rotating.
+  $('chartMeta').innerHTML = `<span class="${shift ? 'meta-shifted' : ''}" title="${shift ? 'Giờ đang thử (' + esc(fmtShift(shift)) + ')' : ''}">` +
+    esc(`${d}/${m}/${y} lúc ${c.time}`) + '</span>' +
     esc(` · ${c.place} · ${formatOffset(zone.total)}` + (c.zodiac === 'sidereal' ? ' · Sidereal' : '') +
       ` · ${f.house.querySelector(`option[value="${c.house}"]`)?.textContent || ''}`);
 }
@@ -524,8 +525,8 @@ function showSvgWheel(data) {
   tabBody.innerHTML = `
     <div class="rectify" id="rectify">
       <div class="rect-time">
-        <div><b id="rectTime"></b> <span id="rectShift" class="shift-badge" hidden></span></div>
-        <div class="muted rect-angles" id="rectAngles"></div>
+        <div class="rect-line"><b id="rectTime"></b><span id="rectShift" class="shift-badge"></span></div>
+        <div class="muted rect-angles"><span id="rectAC">&nbsp;</span><span id="rectMC">&nbsp;</span></div>
       </div>
       <div class="rect-steps" role="group" aria-label="Chỉnh giờ sinh">
         ${[-60, -10, -1, 1, 10, 60].map(s => `<button type="button" data-step="${s}" aria-label="${s > 0 ? 'Tăng' : 'Giảm'} ${Math.abs(s) === 60 ? '1 giờ' : Math.abs(s) + ' phút'}">${s < 0 ? '−' : '+'}${Math.abs(s) === 60 ? '1g' : Math.abs(s) + 'p'}</button>`).join('')}
@@ -563,7 +564,8 @@ function drawWheel(data, forShift) {
   $('focusInfo').innerHTML = focusHtml(data, pinnedKey);
   attachWheel(box, key => { pinnedKey = key; $('focusInfo').innerHTML = focusHtml(data, key); }, pinnedKey);
   const asc = data.objects.find(o => o.key === 'asce'), mc = data.objects.find(o => o.key === 'midh');
-  $('rectAngles').textContent = [asc && `AC ${dm(asc.pos)} ${asc.pos.sign.vi}`, mc && `MC ${dm(mc.pos)} ${mc.pos.sign.vi}`].filter(Boolean).join(' · ');
+  $('rectAC').textContent = asc ? `AC ${dm(asc.pos)} ${asc.pos.sign.vi}` : ' ';
+  $('rectMC').textContent = mc ? `MC ${dm(mc.pos)} ${mc.pos.sign.vi}` : ' ';
   previewRotation();
   updateRectControls();
 }
@@ -578,8 +580,8 @@ function updateRectControls() {
   const c = view();
   const [y, m, d] = c.date.split('-');
   $('rectTime').textContent = `${c.time} · ${d}/${m}/${y}`;
-  $('rectShift').hidden = !shift;
-  $('rectShift').textContent = shift ? fmtShift(shift) : '';
+  $('rectShift').classList.toggle('zero', !shift);
+  $('rectShift').textContent = shift ? fmtShift(shift) : 'giờ gốc';
   $('rectReset').disabled = !shift;
   $('rectApply').disabled = !shift;
 }
