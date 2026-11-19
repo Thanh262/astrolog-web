@@ -274,6 +274,41 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   .rect-steps button { flex: 1; min-width: 0; }
 }
 
+/* ---------- progressions ---------- */
+.prog-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin-bottom: 12px; }
+.prog-controls .field { min-width: 160px; }
+.prog-controls .field:has(select) { min-width: 220px; }
+.prog-age { display: grid; margin-left: auto; text-align: right; font-size: 13.5px; }
+.prog-age b { font-size: 15px; }
+.explain { background: var(--surface-2); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
+.explain summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+.explain p { margin: 8px 0 0; color: var(--text); }
+.wheel-svg.bi .pl-deg { font-size: 18px; }
+.wheel-svg.bi .pl-min { font-size: 12.5px; }
+.wheel-svg.bi .w-sep { stroke-dasharray: 4 5; }
+.wheel-svg .pl.outer { color: var(--accent); }
+.wheel-svg .pl.outer .pl-min { fill: currentColor; opacity: .7; }
+.wheel-svg .asp.conj { stroke: var(--asp-neutral); }
+.wheel-svg.focus .pl.outer.linked { color: var(--accent); }
+.ring-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--planet); }
+.ring-dot.outer { background: var(--accent); }
+.lg.neutral { border-color: var(--asp-neutral); }
+.prog-tables { margin-top: 18px; }
+.timeline { margin-top: 18px; }
+.tl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tl-head h3 { margin: 0 !important; }
+.tl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.tl-list li { display: grid; grid-template-columns: 108px 1fr; align-items: center; gap: 10px; padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.tl-list li.past { opacity: .55; }
+.tl-list li.ingress { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tl-date { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.tl-what { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (max-width: 560px) {
+  .prog-age { margin-left: 0; text-align: left; width: 100%; }
+  .prog-controls .field, .prog-controls .field:has(select) { min-width: 0; flex: 1 1 150px; }
+  .tl-list li { grid-template-columns: 1fr; gap: 3px; }
+}
+
 /* ---------- step 3: install, offline ---------- */
 .install-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .install-btn:hover { background: var(--accent); filter: brightness(1.06); }

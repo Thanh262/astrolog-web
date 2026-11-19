@@ -1,10 +1,10 @@
 // Service worker: keeps the whole app (including the Astrolog engine and ephemeris
 // files) on the device so charts can be cast offline.
 // Bump VERSION whenever any file in public/ changes, so devices pick up the update.
-const VERSION = 'astro-com-v6';
+const VERSION = 'astro-com-v7';
 
 const SHELL = [
-  './', 'index.html', 'style.css', 'app.js', 'engine.js', 'atlas.js', 'chartdata.js', 'wheel.js', 'glyphs.js',
+  './', 'index.html', 'style.css', 'app.js', 'engine.js', 'atlas.js', 'chartdata.js', 'wheel.js', 'glyphs.js', 'progression.js',
   'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
 ];
 const ENGINE = [
