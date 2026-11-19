@@ -1,7 +1,7 @@
 // Service worker: keeps the whole app (including the Astrolog engine and ephemeris
 // files) on the device so charts can be cast offline.
 // Bump VERSION whenever any file in public/ changes, so devices pick up the update.
-const VERSION = 'astrolog-web-v3';
+const VERSION = 'astrolog-web-v4';
 
 const SHELL = [
   './', 'index.html', 'style.css', 'app.js', 'engine.js', 'atlas.js', 'chartdata.js', 'wheel.js', 'glyphs.js',

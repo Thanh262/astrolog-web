@@ -91,7 +91,7 @@
         <p class="hint" id="zoneNote">Kinh độ dương là phía Đông. Múi giờ theo chuẩn IANA, tự xét giờ mùa hè.</p>
 
         <details class="more">
-          <summary>Tùy chọn tính toán</summary>
+          <summary>Tùy chọn: hệ nhà, hoàng đạo, thiên thể</summary>
           <div class="row2">
             <label class="field">
               <span>Hệ thống nhà</span>
@@ -115,6 +115,19 @@
                 <option value="sidereal">Thiên văn (Sidereal)</option>
               </select>
             </label>
+          </div>
+          <div class="obj-section">
+            <div class="obj-head">
+              <span>Thiên thể hiển thị</span>
+              <span class="muted" id="objCount"></span>
+            </div>
+            <div class="presets">
+              <button type="button" class="chip-btn" data-preset="basic">Cơ bản</button>
+              <button type="button" class="chip-btn" data-preset="popular">Phổ biến</button>
+              <button type="button" class="chip-btn" data-preset="all">Tất cả</button>
+            </div>
+            <div id="objectPicker" class="obj-picker"></div>
+            <p class="hint">Luôn có 10 hành tinh chính, Cung Mọc (AC) và Thiên Đỉnh (MC). Thay đổi áp dụng ngay cho lá số đang mở.</p>
           </div>
         </details>
 
