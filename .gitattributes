@@ -1,0 +1,6 @@
+# Keep Astrolog data and binaries byte-for-byte.
+public/data/** -text
+*.se1 binary
+*.wasm binary
+*.png binary
+*.sh text eol=lf

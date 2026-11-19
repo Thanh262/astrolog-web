@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#131218" media="(prefers-color-scheme: dark)">
+  <title>Astrolog Web</title>
+  <meta name="description" content="Lập lá số chiêm tinh bằng lõi Astrolog 7.80 và Swiss Ephemeris, chạy ngay trên máy.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Astrolog">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    try { const t = localStorage.getItem('astrolog-web.theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span>Astrolog <b>Web</b></span>
+    </div>
+    <div class="topbar-right">
+      <span class="engine-tag" id="engineTag">Đang nạp lõi Astrolog…</span>
+      <button class="btn small install-btn" type="button" id="installBtn" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+        Cài app
+      </button>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="banner" id="iosHint" hidden>
+    <span>Cài lên iPhone/iPad: bấm nút <b>Chia sẻ</b>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:-3px"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 15V3m0 0L8 7m4-4 4 4M6 11H5v10h14V11h-1"/></svg>
+      rồi chọn <b>Thêm vào MH chính</b>.</span>
+    <button class="icon-btn small" type="button" id="iosHintClose" aria-label="Đóng hướng dẫn">✕</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <main class="layout">
+    <aside class="side">
+      <form class="card form" id="chartForm" novalidate>
+        <h2>Thông tin lá số</h2>
+
+        <label class="field">
+          <span>Họ tên</span>
+          <input id="name" name="name" type="text" placeholder="Ví dụ: Nguyễn Văn A" autocomplete="off">
+        </label>
+
+        <div class="row2">
+          <label class="field">
+            <span>Ngày sinh</span>
+            <input id="date" name="date" type="date" required>
+          </label>
+          <label class="field">
+            <span>Giờ sinh</span>
+            <input id="time" name="time" type="time" step="60" required>
+          </label>
+        </div>
+
+        <div class="field city-field">
+          <label for="city">Nơi sinh</label>
+          <input id="city" type="text" placeholder="Gõ tên thành phố, ví dụ: Hanoi" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="citySuggest" aria-autocomplete="list">
+          <ul class="suggest" id="citySuggest" role="listbox" hidden></ul>
+        </div>
+
+        <div class="row3">
+          <label class="field">
+            <span>Vĩ độ</span>
+            <input id="lat" type="number" step="0.0001" min="-90" max="90" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Kinh độ</span>
+            <input id="lon" type="number" step="0.0001" min="-180" max="180" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Múi giờ</span>
+            <input id="tz" type="text" placeholder="Asia/Ho_Chi_Minh" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+        <p class="hint" id="zoneNote">Kinh độ dương là phía Đông. Múi giờ theo chuẩn IANA, tự xét giờ mùa hè.</p>
+
+        <details class="more">
+          <summary>Tùy chọn tính toán</summary>
+          <div class="row2">
+            <label class="field">
+              <span>Hệ thống nhà</span>
+              <select id="house">
+                <option value="0">Placidus</option>
+                <option value="1">Koch</option>
+                <option value="2">Equal</option>
+                <option value="14">Whole Sign</option>
+                <option value="3">Campanus</option>
+                <option value="5">Regiomontanus</option>
+                <option value="6">Porphyry</option>
+                <option value="8">Topocentric</option>
+                <option value="9">Alcabitius</option>
+                <option value="15">Vedic</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Hoàng đạo</span>
+              <select id="zodiac">
+                <option value="tropical">Nhiệt đới (Tropical)</option>
+                <option value="sidereal">Thiên văn (Sidereal)</option>
+              </select>
+            </label>
+          </div>
+        </details>
+
+        <p class="error" id="formError" role="alert" hidden></p>
+
+        <div class="actions">
+          <button class="btn primary" type="submit" id="castBtn">Lập lá số</button>
+          <button class="btn" type="button" id="nowBtn">Bây giờ</button>
+        </div>
+      </form>
+
+      <section class="card saved">
+        <div class="saved-head">
+          <h2>Lá số đã lưu</h2>
+          <span class="count" id="savedCount">0</span>
+        </div>
+        <ul id="savedList" class="saved-list"></ul>
+        <p class="hint" id="savedEmpty">Chưa có lá số nào. Lập xong bấm “Lưu” để giữ lại trên máy này.</p>
+      </section>
+    </aside>
+
+    <section class="results">
+      <div class="empty card" id="emptyState">
+        <img src="icon.svg" alt="" width="64" height="64">
+        <h1>Lập lá số chiêm tinh</h1>
+        <p>Nhập ngày, giờ và nơi sinh rồi bấm “Lập lá số”. Mọi phép tính chạy ngay trên máy bạn bằng lõi Astrolog 7.80 và Swiss Ephemeris, không gửi dữ liệu đi đâu.</p>
+      </div>
+
+      <div class="chart card" id="chartView" hidden>
+        <div class="chart-head">
+          <div>
+            <h1 id="chartTitle"></h1>
+            <p class="meta" id="chartMeta"></p>
+          </div>
+          <button class="btn" type="button" id="saveBtn">Lưu</button>
+        </div>
+
+        <nav class="tabs" role="tablist" id="tabs">
+          <button role="tab" data-tab="wheel" aria-selected="true">Bánh xe</button>
+          <button role="tab" data-tab="positions" aria-selected="false">Vị trí</button>
+          <button role="tab" data-tab="aspects" aria-selected="false">Góc chiếu</button>
+          <button role="tab" data-tab="interp" aria-selected="false">Diễn giải</button>
+          <button role="tab" data-tab="classic" aria-selected="false">Cổ điển</button>
+        </nav>
+
+        <div class="tab-body" id="tabBody" role="tabpanel"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>
+      Lõi tính toán: <a href="https://www.astrolog.org/astrolog.htm" target="_blank" rel="noopener">Astrolog 7.80</a>
+      © Walter D. Pullen (GPL v2) · <a href="https://www.astro.com/swisseph/" target="_blank" rel="noopener">Swiss Ephemeris</a>
+      © Astrodienst (AGPL) · Dữ liệu thành phố: GeoNames (CC BY 4.0).
+      <span id="offlineState"></span>
+    </p>
+  </footer>
+
+  <script src="astrolog.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
