@@ -38,8 +38,50 @@ export function searchCities(query, limit = 8) {
   return [...starts, ...contains].slice(0, limit);
 }
 
+// Fixed offsets are written "UTC+07:00" / "UTC-03:30" (no daylight saving).
+const FIXED = /^UTC([+-])(\d{1,2}):(\d{2})$/;
+export function fixedOffset(tz) {
+  const m = FIXED.exec(tz || '');
+  return m ? (m[1] === '-' ? -1 : 1) * (+m[2] * 60 + +m[3]) : null;
+}
+export function fixedName(mins) {
+  const a = Math.abs(mins);
+  return `UTC${mins < 0 ? '-' : '+'}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}`;
+}
+
 export function isValidZone(tz) {
+  if (fixedOffset(tz) !== null) return true;
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
+}
+
+/** Current wall-clock date and time in a zone (IANA or fixed offset). */
+export function wallNow(tz) {
+  const fx = fixedOffset(tz);
+  if (fx !== null) {
+    const t = new Date(Date.now() + fx * 60000);
+    return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate(), hh: t.getUTCHours(), mm: t.getUTCMinutes() };
+  }
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric',
+  }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  return { y: +p.year, m: +p.month, d: +p.day, hh: +p.hour % 24, mm: +p.minute };
+}
+
+const FIXED_LIST = [
+  ...Array.from({ length: 27 }, (_, i) => (i - 12) * 60),
+  -570, -210, 210, 270, 330, 345, 390, 450, 525, 570, 630, 765,
+].sort((a, b) => a - b);
+
+/** Options for the time zone picker. */
+export function zoneOptions() {
+  let iana = [];
+  try { iana = Intl.supportedValuesOf('timeZone'); } catch { /* older browsers */ }
+  if (!iana.length) iana = ['Asia/Ho_Chi_Minh', 'Asia/Bangkok', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Australia/Sydney', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'UTC'];
+  return {
+    suggested: [['Asia/Ho_Chi_Minh', 'Việt Nam (Asia/Ho_Chi_Minh)'], ['UTC', 'UTC (giờ quốc tế)']],
+    fixed: FIXED_LIST.map(m => [fixedName(m), `${fixedName(m).replace('-', '−')} cố định`]),
+    iana: iana.map(z => [z, z.replace(/_/g, ' ')]),
+  };
 }
 
 const fmtCache = new Map();
@@ -59,6 +101,8 @@ function offsetAt(tz, instantMs) {
 
 /** Offset (minutes east of UTC) and daylight-saving part in effect for a local wall time in a zone. */
 export function zoneInfo(tz, y, m, d, hh, mm) {
+  const fx = fixedOffset(tz);
+  if (fx !== null) return { total: fx, standard: fx, dst: 0 };
   const wall = Date.UTC(y, m - 1, d, hh, mm);
   let off = offsetAt(tz, wall);
   off = offsetAt(tz, wall - off * 60000);
